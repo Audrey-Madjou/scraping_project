@@ -1,15 +1,12 @@
 import requests
 from bs4 import BeautifulSoup
 import os
-
-#agent utilisateur
-headers = {
-   'User-Agent':
-   'Mozilla/5.0 (Windows NT 10.0; WIN64; X64) AppleWebkit/537.36 (KHTML,like Gecko) Chrome/107.0.0.0 Safari/537.36'
-}
+import csv
+import urllib.request
+from urllib.parse import urljoin
 
 url= "http://books.toscrape.com/"
-page = requests.get(url,headers=headers)
+page = requests.get(url)
 #rendre le contenu de la page lisible
 content = BeautifulSoup(page.content,"html.parser")
 a_list = []
@@ -19,52 +16,31 @@ books = []
 list = []
 Titres = []
 titles = []
-info = []
+table_elt = []
 categories = []
 test = 0
 books_elements = content.find_all('article',class_= 'content')
 nbre_etoiles = 0
+upc = 0
 categorie = 0
 description = 0
 liste_liens_categories = []
 informations = ['product_page_url',
-                'title','product_description',
+                'title','universal_ product_code (upc)',
+                'price_including_tax',
+                'price_excluding_tax',
+                'number_available',
+                'product_description',
                 'category',
                 'review_rating',
                 'image_url']
-"""
-recuperation/extraction des elements demandés dans le cahier des exigences
-for book_element in books_elements:
-   price_including_tax= book_element.find('p',class_ = 'price_including_tax')
-   title = book_element.find('h3',class_='title')
-   review_rating= book_element.find('p',class_ ='review_rating')
+#creation du dossier qui contient les fichiers csv
+if not os.path.exists("Data") :
+   os.mkdir("Data") 
 
-#for book_element in books_elements :
-#  print(book_element)
+if not os.path.exists("Images") :
+   os.mkdir("Images")
 
-#classement de ces éléments dans la liste books ligne par ligne
-books.append ({
-   
-      'price_including_tax' : price_including_tax,
-      'title' : title,
-      'review_rating' :  review_rating
-})
-
-#logique crawling
-#url of the home page
-base_url = 'http://books.toscrape.com/'
-#extraction de la page te initialisation du content
-#recuperation de la balise indiquant la prochaine page
- 
-next_li_element = content.find('li',class_='next')
-while next_li_element is not None :
-   next_page_relative_url = next_li_element.find('a',href = True)['href']
-   page = requests.get(base_url + next_page_relative_url,headers=headers)
-   content = BeautifulSoup(page.content,'html.parser')
-   #chercher le prochain element dans la page suivante
-   next_li_element=content.find('li',class_='next')
-
-"""
 
 #recuperation des liens de tous les livres
 def recuperation_url(url):
@@ -74,28 +50,40 @@ def recuperation_url(url):
     for tag_element in tag_elements :
        a_list = tag_element.find("a")
        links = a_list["href"]
+
        links = links.replace("../../../","http://books.toscrape.com/catalogue/")#remplacemment des points par l'adresse de la page
+      
        list.append(links)
+    #var = url.replace("index.html","")
+    if content.find("li",class_ = "next") :
+        suivant = content.find("li",class_ ="next")
+        next = suivant.find("a")
+        next_page = next["href"]
+        next_page = urljoin(url , next_page)
+        print("next page : ",next_page)
+        recuperation_url(next_page)
+       
 
-
+      
 #recuperation des informations concernant un livre
 def recuperation_info(url):
    page = requests.get(url)
    content = BeautifulSoup(page.content,'html.parser')  
-   Titres= content.find_all('ul',class_ = 'breadcumb')
-   for Titre in Titres :
-      titre = Titres.find('li',class_ = 'active')
-
-   infos = content.find('table', class_= 'table table-striped') 
+   titre= content.find('ul',class_ = 'breadcrumb')
+   titre = content.find("li",class_="active").text
+   table_elt = content.find('table', class_= 'table table-striped')
+   info = table_elt.find_all("td")
+   upc = info[0].text
+   price_including_tax = info[4].text
+   price_excluding_tax = info[3].text
+   number_available =  info[5].text
    test = url
    print(test)
    p_text = content.find_all('p')
-   description = p_text[3]#troisieme balise p
-   categories = content.find('ul',class_='breadcumb')
+   description = p_text[3].text#troisieme balise p
+   categories = content.find('ul',class_='breadcrumb').find_all("li")
    print(f"{categories} est la categorie")
    categorie = categories[2].text
-   
-   
    image = content.find('img')
    source = image["src"]
    source =  source.replace("../../",url)
@@ -106,7 +94,7 @@ def recuperation_info(url):
       return nbre_etoiles
    if star == 'two' :
       nbre_etoiles = 2
-   
+      return nbre_etoiles
    if star == 'three' :
       nbre_etoiles = 3
       return  nbre_etoiles
@@ -116,9 +104,21 @@ def recuperation_info(url):
    if star == 'five' :
       nbre_etoiles = 5
       return nbre_etoiles
+   Image = content.find('img')
+   Source = Image["src"]
+   Source =  Source.replace("../../",url)
+   id = Image["alt"].replace(" ","_")
    
-   liste_info = [url,titre,description,categorie,star,source]
+   print(f"voici le source {Source}")
+ 
+  # urllib.request.urlretrieve(Source,"Images/" )
+   with open("Images/" + id + ".jpg","wb") as f :
+      I = requests.get(Source)
+      f.write(I.content)
+    
+   liste_info = [url,titre, upc,price_including_tax,price_excluding_tax,number_available ,description,categorie,star,source]
    return liste_info
+
 
 def url_categorie():
    #url de la page principale
@@ -133,20 +133,24 @@ def url_categorie():
       liste_liens_categories.append(i)
    liste_liens_categories.pop(0)
       
-
 url_categorie()
-#for i in liste_liens_categories :
- # print(i)
-#creation du dossier qui contient les fichiers csv
-if not os.path.exists("Data") :
-   os.mkdir("Data") 
+
+def save_data() : 
+   for link in liste_liens_categories:
+       page = requests.get(link)
+       content = BeautifulSoup(page.content,"html.parser")
+       titre_page = content.find("h1").text.replace(" ","_")
+       titre_page = titre_page + ".csv"
+
+       csv_file =open("Data/"+titre_page,"w",encoding='utf-8',newline='')#creation du fichier avec pour nom la categorie
+       writer = csv.writer(csv_file)#initialisation 
+       writer.writerow(informations)#donner les champs de informations au fichier?
+       recuperation_url(link)#recuperation du lien de la page des livres de cette categorie
+       for i in list :
+          writer.writerow(recuperation_info(i))
+       csv_file.close()#terminaison de l'operation de remplissage dans ce fichier
+       
+save_data()
 
 
-for i in liste_liens_categories :
-   print(i)
-   page = requests.get(i)
-   content = BeautifulSoup(page.content,"html.parser")
-   recuperation_url(i)
-   for j in list:
-      print (recuperation_info(j))
 
